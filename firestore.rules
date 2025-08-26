@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Avisos (públicos)
+    match /announcements/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Tareas (lectura pública)
+    match /assignments/{aid} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+
+      match /submissions/{sid} {
+        allow read: if isAdmin();   // Solo el docente
+        allow create: if true;      // El alumnado puede entregar sin cuenta (MVP)
+        allow update, delete: if false;
+      }
+    }
+
+    // Lista de admins (solo consola)
+    match /admins/{uid} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}
