@@ -11,8 +11,12 @@ export default function Panel() {
     </Protected>
   );
 }
+// arriba del componente PanelInner()
+const CLASS_OPTIONS = ["1A","1B","2A","2B"];
 
 function PanelInner() {
+  const [cls, setCls] = useState("1A");       // <— nueva
+  const [filtro, setFiltro] = useState("");   // <— nueva (filtro listado)
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [due, setDue] = useState("");
