@@ -21,7 +21,7 @@ function PanelInner() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [due, setDue] = useState("");
-  const [cls, setCls] = useState("1A");
+  const [cls, setCls] = useState(CLASS_OPTIONS[0] || "1A");
   const [aTitle, setATitle] = useState("");
   const [aBody, setABody] = useState("");
   const [tareas, setTareas] = useState([]);
@@ -44,7 +44,7 @@ function PanelInner() {
       createdAt: serverTimestamp()
     });
 
-    // Notificar a TODAS las familias de la clase
+    // Notificar a familias de esa clase (notify !== false)
     try {
       const emails = await getFamilyEmailsByClass(cls);
       const dueStr = dueDate ? dueDate.toLocaleString() : "";
@@ -63,7 +63,7 @@ function PanelInner() {
     }
 
     setTitle(""); setDesc(""); setDue("");
-    alert("Tarea creada y familias notificadas (si existen para la clase).");
+    alert("Tarea creada" + (emails?.length ? " y familias notificadas." : "."));
   }
 
   async function crearAviso(e) {
@@ -76,17 +76,12 @@ function PanelInner() {
   }
 
   async function getFamilyEmailsByClass(classGroup) {
-    const snap = await getDocs(
-      query(
-        collection(db, "families"),
-        where("classGroup","==", classGroup),
-        where("notify","in",[true, null])
-      )
-    );
+    const snap = await getDocs(query(collection(db, "families"), where("classGroup","==", classGroup)));
     const emails = new Set();
     snap.forEach(d => {
-      const arr = (d.data().parentEmails || []).filter(Boolean);
-      arr.forEach(x => emails.add(String(x).trim()));
+      const data = d.data();
+      if (data.notify === false) return; // respeta opt-out
+      (data.parentEmails || []).filter(Boolean).forEach(x => emails.add(String(x).trim()));
     });
     return Array.from(emails);
   }
@@ -96,6 +91,10 @@ function PanelInner() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Panel del docente</h1>
+
+      <div className="card">
+        <a className="btn" href="/panel/familias">Gestionar familias</a>
+      </div>
 
       <div className="grid md:grid-cols-2 gap-6">
         <form onSubmit={crearTarea} className="card space-y-3">

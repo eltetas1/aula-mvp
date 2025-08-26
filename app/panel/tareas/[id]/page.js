@@ -81,17 +81,25 @@ function Entregas({ id }) {
     }
   }
 
-  async function getFamilyEmailsByStudent(studentName, classGroup) {
-    const q = query(
-      collection(db, "families"),
-      where("studentName", "==", studentName),
-      where("classGroup", "==", classGroup)
-    );
-    const snap = await getDocs(q);
-    const set = new Set();
-    snap.forEach(d => (d.data().parentEmails || []).forEach(e => set.add(String(e).trim())));
-    return Array.from(set);
-  }
+function norm(s){ return (s || "").trim().toLowerCase(); }
+
+async function getFamilyEmailsByStudent(studentName, classGroup) {
+  // Busca por claves normalizadas (que guarda el panel de familias)
+  const q = query(
+    collection(db, "families"),
+    where("studentKey", "==", norm(studentName)),
+    where("classKey", "==", norm(classGroup))
+  );
+  const snap = await getDocs(q);
+  const set = new Set();
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.notify === false) return; // respeta opt-out
+    (data.parentEmails || []).forEach(e => set.add(String(e).trim()));
+  });
+  return Array.from(set);
+}
+
 
   if (!tarea) return <div className="container py-10">Cargando…</div>;
 
