@@ -7,17 +7,12 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 
-const CLASS_OPTIONS = ["1A","1B","2A","2B"]; // ajusta a tus clases
+const CLASS_OPTIONS = ["1A","1B","2A","2B"];
 
-// Normalizador para búsquedas y claves
 function norm(s){ return (s || "").trim().toLowerCase(); }
-
-// Parser muy simple de emails separados por coma/espacio/nueva línea
 function parseEmails(text){
-  return (text||"")
-    .split(/[\s,;]+/g)
-    .map(e => e.trim())
-    .filter(e => e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+  return (text||"").split(/[\s,;]+/g).map(e=>e.trim())
+    .filter(e=>e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
 }
 
 export default function FamiliasPanel() {
@@ -139,7 +134,7 @@ function FamiliasInner() {
             <button className="btn btn-primary" type="submit">{editingId ? "Guardar cambios" : "Añadir"}</button>
             {editingId && <button className="btn" type="button" onClick={resetForm}>Cancelar</button>}
           </div>
-          <p className="text-xs text-gray-500">Guardamos también una clave normalizada para que las búsquedas no dependan de mayúsculas/minúsculas.</p>
+          <p className="text-xs text-gray-500">Guardamos claves en minúsculas para búsquedas.</p>
         </form>
 
         <div className="space-y-3">
