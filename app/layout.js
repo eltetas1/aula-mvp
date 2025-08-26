@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import "./globals.css";
 import Nav from "@/components/Nav";
 import { AuthProvider } from "@/components/AuthProvider";
