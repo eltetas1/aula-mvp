@@ -4,6 +4,8 @@ import { db } from "@/lib/firebase";
 import { addDoc, collection, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
+const CLASS_OPTIONS = ["1A","1B","2A","2B"]; // ajusta las que uses
+
 export default function Panel() {
   return (
     <Protected>
@@ -11,18 +13,16 @@ export default function Panel() {
     </Protected>
   );
 }
-// arriba del componente PanelInner()
-const CLASS_OPTIONS = ["1A","1B","2A","2B"];
 
 function PanelInner() {
-  const [cls, setCls] = useState("1A");       // <— nueva
-  const [filtro, setFiltro] = useState("");   // <— nueva (filtro listado)
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [due, setDue] = useState("");
+  const [cls, setCls] = useState("1A");      // clase seleccionada al crear
   const [aTitle, setATitle] = useState("");
   const [aBody, setABody] = useState("");
   const [tareas, setTareas] = useState([]);
+  const [filtro, setFiltro] = useState("");  // filtro por clase en listado
 
   useEffect(() => {
     const q = query(collection(db, "assignments"), orderBy("createdAt","desc"));
@@ -36,6 +36,7 @@ function PanelInner() {
     await addDoc(collection(db, "assignments"), {
       title,
       description: desc,
+      classGroup: cls, // << guarda la clase
       dueDate: dueDate ? { seconds: Math.floor(dueDate.getTime()/1000) } : null,
       createdAt: serverTimestamp()
     });
@@ -52,6 +53,8 @@ function PanelInner() {
     alert("Aviso publicado");
   }
 
+  const visibles = filtro ? tareas.filter(t => t.classGroup === filtro) : tareas;
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Panel del docente</h1>
@@ -63,6 +66,10 @@ function PanelInner() {
           <input className="input" value={title} onChange={e=>setTitle(e.target.value)} required />
           <label className="label">Descripción</label>
           <textarea className="input min-h-[140px]" value={desc} onChange={e=>setDesc(e.target.value)} required />
+          <label className="label">Clase</label>
+          <select className="input" value={cls} onChange={e=>setCls(e.target.value)}>
+            {CLASS_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           <label className="label">Fecha límite (opcional)</label>
           <input className="input" type="datetime-local" value={due} onChange={e=>setDue(e.target.value)} />
           <button className="btn btn-primary">Crear tarea</button>
@@ -78,12 +85,21 @@ function PanelInner() {
         </form>
       </div>
 
+      <div className="card flex items-center gap-3">
+        <span className="text-sm">Filtrar por clase:</span>
+        <select className="input w-32" value={filtro} onChange={e=>setFiltro(e.target.value)}>
+          <option value="">Todas</option>
+          {CLASS_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">Tareas publicadas</h2>
-        {tareas.map((t) => (
+        {visibles.map((t) => (
           <div key={t.id} className="card">
             <div className="flex items-center gap-3">
               <div className="font-medium">{t.title}</div>
+              <span className="text-xs px-2 py-1 rounded bg-gray-100">{t.classGroup || "—"}</span>
               <a className="btn" href={`/tareas/${t.id}`} target="_blank" rel="noreferrer">Abrir</a>
               <a className="btn" href={`/panel/tareas/${t.id}`}>Ver entregas</a>
             </div>
