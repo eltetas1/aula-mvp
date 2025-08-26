@@ -1,58 +1,96 @@
 'use client'
-import { useEffect, useState } from "react";
+import Protected from "@/components/Protected";
 import { db } from "@/lib/firebase";
 import {
-  doc, getDoc, addDoc, collection,
-  serverTimestamp, onSnapshot, orderBy, query
+  doc, getDoc, collection, query, orderBy, onSnapshot, updateDoc,
+  getDocs, where
 } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/components/AuthProvider";
 
-export default function TareaDetalle({ params }) {
+export default function PanelTareaEntregas({ params }) {
   const { id } = params;
+  return (
+    <Protected>
+      <Entregas id={id} />
+    </Protected>
+  );
+}
+
+const STATUS_OPTIONS = [
+  { value: "sent", label: "Pendiente" },
+  { value: "approved", label: "Aprobado ✅" },
+  { value: "needs_changes", label: "Necesita cambios ✏️" },
+  { value: "rejected", label: "Rechazado ❌" },
+];
+
+function Entregas({ id }) {
   const [tarea, setTarea] = useState(null);
-  const [nombre, setNombre] = useState("");
-  const [enlace, setEnlace] = useState("");
-  const [comentario, setComentario] = useState("");
-  const [envios, setEnvios] = useState([]);
-  const { user } = useAuth();
+  const [subs, setSubs] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
-    // Datos de la tarea
-    async function fetch() {
+    (async () => {
       const snap = await getDoc(doc(db, "assignments", id));
       if (snap.exists()) setTarea({ id: snap.id, ...snap.data() });
-    }
-    fetch();
+    })();
 
-    // Entregas SOLO si hay usuario (profe)
-    if (!user) return;
-
-    const q = query(
-      collection(db, "assignments", id, "submissions"),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(q,
-      (snap) => setEnvios(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      (err) => {
-        if (err?.code !== "permission-denied") console.error(err);
-      }
-    );
+    const q = query(collection(db, "assignments", id, "submissions"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, s => setSubs(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => unsub();
-  }, [id, user]);
+  }, [id]);
 
-  async function enviar(e) {
-    e.preventDefault();
-    await addDoc(collection(db, "assignments", id, "submissions"), {
-      name: nombre.trim(),
-      link: enlace.trim(),
-      comment: comentario.trim(),
-      createdAt: serverTimestamp(),
-      status: "sent"
+  async function guardar(sub, { grade, feedback, status }) {
+    const g = grade === "" || grade == null ? null : Number(grade);
+    await updateDoc(doc(db, "assignments", id, "submissions", sub.id), {
+      grade: g, feedback: feedback || "", status: status || "sent"
     });
-    setNombre(""); setEnlace(""); setComentario("");
-    alert("¡Enviado!");
+    await notificarFamilia({
+      studentName: sub.name || "Alumno",
+      assignmentTitle: tarea?.title || "Tarea",
+      classGroup: tarea?.classGroup || "",
+      status: status || "sent",
+      grade: g,
+      feedback: feedback || ""
+    });
+    alert("Guardado y familia notificada (si existe).");
+  }
+
+  async function accionRapida(sub, status) {
+    await updateDoc(doc(db, "assignments", id, "submissions", sub.id), { status });
+    await notificarFamilia({
+      studentName: sub.name || "Alumno",
+      assignmentTitle: tarea?.title || "Tarea",
+      classGroup: tarea?.classGroup || "",
+      status
+    });
+  }
+
+  async function notificarFamilia(payload) {
+    try {
+      const emails = await getFamilyEmailsByStudent(payload.studentName, payload.classGroup);
+      if (emails.length) {
+        await fetch("/api/notify/submission-updated", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipients: emails, submission: payload }),
+        });
+      }
+    } catch (e) {
+      console.error("Error notificando familia:", e);
+    }
+  }
+
+  async function getFamilyEmailsByStudent(studentName, classGroup) {
+    const q = query(
+      collection(db, "families"),
+      where("studentName", "==", studentName),
+      where("classGroup", "==", classGroup)
+    );
+    const snap = await getDocs(q);
+    const set = new Set();
+    snap.forEach(d => (d.data().parentEmails || []).forEach(e => set.add(String(e).trim())));
+    return Array.from(set);
   }
 
   if (!tarea) return <div className="container py-10">Cargando…</div>;
@@ -62,41 +100,80 @@ export default function TareaDetalle({ params }) {
       <button className="btn" onClick={() => router.back()}>&larr; Volver</button>
 
       <div className="card">
-        <h1 className="text-2xl font-semibold">{tarea.title}</h1>
-        <p className="mt-1 text-sm text-gray-600">Clase: <b>{tarea.classGroup || "—"}</b></p>
-        <p className="mt-2 whitespace-pre-wrap">{tarea.description}</p>
+        <h1 className="text-2xl font-semibold">Entregas — {tarea.title}</h1>
+        {tarea.classGroup && <p className="text-sm text-gray-600 mt-1">Clase: <b>{tarea.classGroup}</b></p>}
+        {tarea.dueDate?.seconds && (
+          <p className="text-sm text-gray-600">Entrega: {new Date(tarea.dueDate.seconds * 1000).toLocaleString()}</p>
+        )}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Formulario de entrega */}
-        <form onSubmit={enviar} className="card space-y-3">
-          <h2 className="text-lg font-semibold">Entregar</h2>
-          <label className="label">Nombre del alumno</label>
-          <input className="input" value={nombre} onChange={e=>setNombre(e.target.value)} required />
-          <label className="label">Enlace al trabajo (Drive, Docs, etc.)</label>
-          <input className="input" type="url" value={enlace} onChange={e=>setEnlace(e.target.value)} placeholder="https://…" required />
-          <label className="label">Comentario (opcional)</label>
-          <textarea className="input min-h-[100px]" value={comentario} onChange={e=>setComentario(e.target.value)} />
-          <button className="btn btn-primary">Enviar</button>
-          <p className="text-xs text-gray-500">No hace falta cuenta: solo registramos nombre, enlace y fecha.</p>
-        </form>
+      {subs.length === 0 && <div className="card">Aún no hay entregas.</div>}
 
-        {/* Entregas: solo profe autenticado */}
-        {user && (
-          <div className="space-y-2">
-            <div className="card">
-              <h2 className="text-lg font-semibold">Entregas recientes (solo profe)</h2>
-              <p className="text-sm text-gray-500">Las entregas se guardan y el docente las verá en el Panel.</p>
-            </div>
-            {envios.map(s => (
-              <div key={s.id} className="card">
-                <p className="font-medium">{s.name || "Sin nombre"}</p>
-                {s.link && <a className="link break-all" href={s.link} target="_blank" rel="noreferrer">{s.link}</a>}
-                {s.comment && <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{s.comment}</p>}
-              </div>
-            ))}
+      <div className="space-y-3">
+        {subs.map(s => (
+          <EntregaCard
+            key={s.id}
+            s={s}
+            onSave={(data) => guardar(s, data)}
+            onQuick={(status) => accionRapida(s, status)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EntregaCard({ s, onSave, onQuick }) {
+  const [grade, setGrade] = useState(s.grade ?? "");
+  const [feedback, setFeedback] = useState(s.feedback ?? "");
+  const [status, setStatus] = useState(s.status ?? "sent");
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium">{s.name || "Sin nombre"}</div>
+          <div className="text-sm text-gray-600">
+            {s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000).toLocaleString() : "—"}
           </div>
-        )}
+          {s.comment && <p className="mt-2 whitespace-pre-wrap">{s.comment}</p>}
+          {s.link && (
+            <p className="mt-2">
+              <a className="btn btn-primary" href={s.link} target="_blank" rel="noreferrer">Abrir enlace</a>
+            </p>
+          )}
+        </div>
+
+        <div className="w-full md:w-96 space-y-2">
+          <label className="label">Estado</label>
+          <select className="input" value={status} onChange={e=>setStatus(e.target.value)}>
+            {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+
+          <label className="label">Puntuación (0–10)</label>
+          <input
+            className="input"
+            type="number" min="0" max="10" step="0.1"
+            value={grade}
+            onChange={e=>setGrade(e.target.value)}
+            placeholder="Ej: 10"
+          />
+
+          <label className="label">Feedback</label>
+          <textarea
+            className="input min-h-[90px]"
+            value={feedback}
+            onChange={e=>setFeedback(e.target.value)}
+            placeholder="Comentario para el alumno"
+          />
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button className="btn" onClick={() => onSave({ grade, feedback, status })}>Guardar</button>
+            <button className="btn" onClick={() => onQuick("approved")}>Aprobar ✅</button>
+            <button className="btn" onClick={() => onQuick("needs_changes")}>Necesita cambios ✏️</button>
+            <button className="btn" onClick={() => onQuick("rejected")}>Rechazar ❌</button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,10 @@
 'use client'
 import Protected from "@/components/Protected";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc, collection, onSnapshot, orderBy, query, serverTimestamp,
+  getDocs, where
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
 
 const CLASS_OPTIONS = ["1A","1B","2A","2B"]; // ajusta las que uses
@@ -18,11 +21,11 @@ function PanelInner() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [due, setDue] = useState("");
-  const [cls, setCls] = useState("1A");      // clase seleccionada al crear
+  const [cls, setCls] = useState("1A");
   const [aTitle, setATitle] = useState("");
   const [aBody, setABody] = useState("");
   const [tareas, setTareas] = useState([]);
-  const [filtro, setFiltro] = useState("");  // filtro por clase en listado
+  const [filtro, setFiltro] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "assignments"), orderBy("createdAt","desc"));
@@ -33,15 +36,34 @@ function PanelInner() {
   async function crearTarea(e) {
     e.preventDefault();
     const dueDate = due ? new Date(due) : null;
-    await addDoc(collection(db, "assignments"), {
+    const docRef = await addDoc(collection(db, "assignments"), {
       title,
       description: desc,
-      classGroup: cls, // << guarda la clase
+      classGroup: cls,
       dueDate: dueDate ? { seconds: Math.floor(dueDate.getTime()/1000) } : null,
       createdAt: serverTimestamp()
     });
+
+    // Notificar a TODAS las familias de la clase
+    try {
+      const emails = await getFamilyEmailsByClass(cls);
+      const dueStr = dueDate ? dueDate.toLocaleString() : "";
+      if (emails.length) {
+        await fetch("/api/notify/new-assignment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipients: emails,
+            assignment: { title, description: desc, classGroup: cls, dueDateStr: dueStr, id: docRef.id }
+          })
+        });
+      }
+    } catch (err) {
+      console.error("Error enviando emails:", err);
+    }
+
     setTitle(""); setDesc(""); setDue("");
-    alert("Tarea creada");
+    alert("Tarea creada y familias notificadas (si existen para la clase).");
   }
 
   async function crearAviso(e) {
@@ -51,6 +73,22 @@ function PanelInner() {
     });
     setATitle(""); setABody("");
     alert("Aviso publicado");
+  }
+
+  async function getFamilyEmailsByClass(classGroup) {
+    const snap = await getDocs(
+      query(
+        collection(db, "families"),
+        where("classGroup","==", classGroup),
+        where("notify","in",[true, null])
+      )
+    );
+    const emails = new Set();
+    snap.forEach(d => {
+      const arr = (d.data().parentEmails || []).filter(Boolean);
+      arr.forEach(x => emails.add(String(x).trim()));
+    });
+    return Array.from(emails);
   }
 
   const visibles = filtro ? tareas.filter(t => t.classGroup === filtro) : tareas;
