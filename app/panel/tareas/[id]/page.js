@@ -19,26 +19,23 @@ export default function TareaDetalle({ params }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Cargar datos de la tarea (siempre)
+    // Datos de la tarea
     async function fetch() {
       const snap = await getDoc(doc(db, "assignments", id));
       if (snap.exists()) setTarea({ id: snap.id, ...snap.data() });
     }
     fetch();
 
-    // Cargar entregas SOLO si hay usuario (evita errores a visitantes)
+    // Entregas SOLO si hay usuario (profe)
     if (!user) return;
 
     const q = query(
       collection(db, "assignments", id, "submissions"),
       orderBy("createdAt", "desc")
     );
-
-    const unsub = onSnapshot(
-      q,
+    const unsub = onSnapshot(q,
       (snap) => setEnvios(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       (err) => {
-        // Si no es admin, Firestore devolverá permission-denied (normal).
         if (err?.code !== "permission-denied") console.error(err);
       }
     );
@@ -66,61 +63,36 @@ export default function TareaDetalle({ params }) {
 
       <div className="card">
         <h1 className="text-2xl font-semibold">{tarea.title}</h1>
+        <p className="mt-1 text-sm text-gray-600">Clase: <b>{tarea.classGroup || "—"}</b></p>
         <p className="mt-2 whitespace-pre-wrap">{tarea.description}</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        {/* Formulario de entrega (abierto a cualquiera) */}
+        {/* Formulario de entrega */}
         <form onSubmit={enviar} className="card space-y-3">
           <h2 className="text-lg font-semibold">Entregar</h2>
           <label className="label">Nombre del alumno</label>
-          <input
-            className="input"
-            value={nombre}
-            onChange={e=>setNombre(e.target.value)}
-            required
-          />
+          <input className="input" value={nombre} onChange={e=>setNombre(e.target.value)} required />
           <label className="label">Enlace al trabajo (Drive, Docs, etc.)</label>
-          <input
-            className="input"
-            type="url"
-            value={enlace}
-            onChange={e=>setEnlace(e.target.value)}
-            placeholder="https://…"
-            required
-          />
+          <input className="input" type="url" value={enlace} onChange={e=>setEnlace(e.target.value)} placeholder="https://…" required />
           <label className="label">Comentario (opcional)</label>
-          <textarea
-            className="input min-h-[100px]"
-            value={comentario}
-            onChange={e=>setComentario(e.target.value)}
-          />
+          <textarea className="input min-h-[100px]" value={comentario} onChange={e=>setComentario(e.target.value)} />
           <button className="btn btn-primary">Enviar</button>
-          <p className="text-xs text-gray-500">
-            No hace falta cuenta: solo registramos nombre, enlace y fecha.
-          </p>
+          <p className="text-xs text-gray-500">No hace falta cuenta: solo registramos nombre, enlace y fecha.</p>
         </form>
 
-        {/* Columna de entregas: solo visible si hay usuario (profe) */}
+        {/* Entregas: solo profe autenticado */}
         {user && (
           <div className="space-y-2">
             <div className="card">
               <h2 className="text-lg font-semibold">Entregas recientes (solo profe)</h2>
-              <p className="text-sm text-gray-500">
-                Las entregas se guardan y el docente las verá en el Panel.
-              </p>
+              <p className="text-sm text-gray-500">Las entregas se guardan y el docente las verá en el Panel.</p>
             </div>
             {envios.map(s => (
               <div key={s.id} className="card">
                 <p className="font-medium">{s.name || "Sin nombre"}</p>
-                {s.link && (
-                  <a className="link break-all" href={s.link} target="_blank" rel="noreferrer">
-                    {s.link}
-                  </a>
-                )}
-                {s.comment && (
-                  <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{s.comment}</p>
-                )}
+                {s.link && <a className="link break-all" href={s.link} target="_blank" rel="noreferrer">{s.link}</a>}
+                {s.comment && <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{s.comment}</p>}
               </div>
             ))}
           </div>
