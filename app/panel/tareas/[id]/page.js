@@ -8,6 +8,13 @@ import {
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+<a className="btn" href="/panel/tareas" onClick={(e)=>{
+  e.preventDefault();
+  if (typeof window !== "undefined" && window.history.length > 1) history.back();
+  else location.href = "/panel/tareas";
+}}>&larr; Volver</a>
+
+
 export default function PanelTareaEntregas({ params }) {
   const { id } = params;
   return (
